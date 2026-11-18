@@ -1,0 +1,216 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>NeuronIDE - main.py</title>
+    <link rel="stylesheet" href="./css/index.css">
+    <link rel="stylesheet" href="./css/syntax.css">
+    <link rel="stylesheet" href="./css/ids.css">
+    <link rel="stylesheet" href="./packages//error/error.css">
+    <link rel="stylesheet" href="./packages/message/message.css">
+    <link rel="stylesheet" href="./packages/options/options.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet"/>
+  </head>
+  <body>
+
+    <div class="title_bar">
+      <div class="title_icon"><img src="./icons/logo.png"></div>
+        <div class="title_text">
+            NeuronIDE <span class="dot">•</span><span class="purple" id="file-path">No file</span>
+        </div>
+
+      <div class="title_controls">
+        <button class="window_buttons close" id="close" title="Close"></button>
+        <button class="window_buttons minimize" id="minimize" title="Minimize"></button>
+        <button class="window_buttons maximize" id="maximize" title="Maximize"></button>
+      </div>
+    </div>
+    <div class="app">
+      <div class="panel_base option_frame">
+        <div class="option_top">
+          <div class="selected_option">
+            <img src="./icons/edit.svg" class="selected_option">
+          </div>
+          <img src="./icons/usage.svg">
+          <img src="./icons/tools.svg">
+          <img src="./icons/users.svg">
+          <img src="./icons/ex.svg">
+        </div>
+
+        <div class="option_bottom">
+          <img class="selected_option" src="./icons/terminal.svg    ">
+          <img src="./icons/localhosts.svg">
+          <img src="./icons/search_folder.svg">
+          <img src="./icons/dots.svg">
+        </div>
+      </div>
+
+      <div class="panel_base explorer_frame" id="main_explorer">
+        <div class="type_options">
+          <div class="buttons selected_button">Explorer</div>
+          <div class="buttons">Properties</div>
+        </div>
+
+        <div id="tree" class="tree">
+    
+        </div>
+      </div>
+
+      <div class="panel_base flex_center top_options">
+        <div class="option_part">
+          <img src="./icons/menu.svg">
+          <div class="project_selection">
+            <img src="./icons/logo.png" class="right-icon"> 
+            <span class="project_called project">NeuronIDE - Default Window</span>
+            <img src="./icons/down.svg" class="left-icon">
+          </div>
+        </div>
+  
+        <div class="screen_type">
+          <img src="./icons/screens/phone.svg" class="right-icon"> 
+          <span class="project">Iphone 17</span>
+          <img src="./icons/down.svg" class="left-icon">
+        </div>
+  
+        <div class="flex_center project_selection">
+          <img src="./icons/project.svg" class="right-icon"> 
+          <span class="project">Example</span>
+          <img src="./icons/down.svg" class="left-icon">
+        </div>
+  
+        <div class="commands"> 
+          <img src="./icons/start.svg">
+          <img src="./icons/top_bug.svg">
+        </div>
+        
+        <div class="user">
+          <div class="profile_photo"><img src="./icons/settings/user.png"></div>
+          <div class="username">
+            <span>MrBatata</span>
+            <img src="./icons/settings/pen.svg">
+            <img src="./icons/settings/new_account.svg">
+            <img src="./icons/settings/settings.svg">
+            <img src="./icons/dots.svg">
+          </div>
+        </div>
+      </div>
+  
+      <div class="bottom_options">
+      <div class="info">
+        <img src="icons/error.svg">
+        <span>0</span>
+
+        <img src="./icons/warning.svg">
+        <span>0</span>
+
+        <div class="separator"></div>
+
+        <span class="breadcrumb">
+          Test > example > functionalites >
+
+          <span class="path-item">
+            <img src="./icons/path/class.svg">
+            Example_Class
+          </span>
+
+          <span class="breadcrumb-separator">></span>
+
+          <span class="path-item">
+            <img src="./icons/path/function.svg">
+            TestFunction
+          </span>
+        </span>
+      </div>
+
+        <div class="info_others">
+          <span>LF</span>
+          <span>UTF-8</span>
+          <span>TypeScript</span>
+          <img src="./icons/languages/ts.svg">
+
+          <div class="separator"></div>
+
+          <span>Ln 1, Col 0</span>
+        </div>
+      </div>
+
+      <div class="panel_base code_editor">
+        <div class="files_explorer">
+          <div class="file_pos"></div>
+          <div class="actions_pos">
+            <img src="./icons/copy.svg">
+            <img src="./icons/top_search.svg">
+            <img src="./icons/undo.svg">
+            <img src="./icons/redo.svg">
+          </div>
+        </div>
+
+        <!-- <div class="terminal">
+          <div class="terminal_side_options ">
+              <img src="./icons/copy.svg">
+              <img src="./icons/delete.svg">
+              <img src="./icons/terminal_refresh.svg">
+              <div class="terminal_bottom">
+                <img src="./icons/settings/settings.svg">
+              </div>
+          </div>
+          <div class="terminal_options">
+            <div class="terminal_ran_command">
+              <img src="./icons/terminal_ico.svg">
+              <span>
+                Terminal •  <span class="purple"> PowerShell</span>
+              </span>
+            </div>
+
+            <div class="terminal_paramatar">
+              <img src="./icons/exit.svg">
+              <img src="./icons/minisize.svg"> 
+            </div>
+          </div>
+          <div class="terminal_commands terminal_mono" id="terminal"></div>
+          <div class="terminal_explorer">
+            <div class="selected_terminal_section file_start terminal_section">
+              <img src="icons/terminal.svg">
+              <span>Terminal • PowerShell</span>
+            </div>
+            <div class="terminal_section">
+              <img src="icons/warning.svg">
+              <span>Problems</span>
+            </div>
+
+            <div class="terminal_adds">
+              <img src="./icons/right_arrow.svg"> 
+              <img src="./icons/plus.svg">
+              <img src="./icons/dots.svg">
+            </div>
+          </div>
+        </div> -->
+      <div id="editor" tabindex="0">
+        <pre id="editor-lines" aria-hidden="true"></pre>
+
+        <div id="editor-scroll">
+          <div id="editor-content"></div>
+          <div id="editor-current-line" aria-hidden="true"></div>
+          <div id="editor-caret" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+    
+      <div class="panel_base tools_frame">
+        <div class="option_top">
+          <img src="./icons/screens/gui.svg" class="selected_option">
+          <img src="./icons/layout.svg">
+          <img src="./icons/message.svg">
+        </div>
+        <div class="option_bottom">
+          <img src="./icons/settings/notification.svg">
+          <img src="./icons/info.svg">
+        </div>
+      </div>
+      <script type="module" src="./init.ts"></script>
+      </div>
+  </body>
+</html>

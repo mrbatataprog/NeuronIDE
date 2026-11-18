@@ -1,0 +1,63 @@
+.blue {
+  color: rgb(160, 236, 236);
+}
+
+.yellow {
+  color: rgb(235, 235, 126);
+}
+
+
+.purple {
+  color: rgb(173, 21, 211);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.syntax-default {
+  color: rgb(211, 223, 223);
+}
+
+
+.syntax-brackets {
+  color: rgb(196, 195, 194);
+}
+
+.syntax-function {
+  color: #7aa2f7;
+  font-weight: 600;
+}
+
+.syntax-property {
+  color: #7dcfff;
+  font-weight: var(--text-syntax-weight);
+}
+
+.syntax-self {
+  color: #ff9e64;
+  font-weight: 500;
+}
+
+.syntax-type {
+  color: #23914d;
+  font-weight: var(--text-syntax-weight);
+}
+
+.syntax-keyword {
+  color: #bb9af7;
+  font-weight: var(--text-syntax-weight);
+}
+
+.syntax-string {
+  color: #9ece6a;
+  font-weight: var(--text-syntax-weight);
+}
+
+.syntax-number {
+  color: #ff9e64;
+  font-weight: 500;
+}
+
+.syntax-comment {
+  color: #565f89;
+  font-weight: var(--text-syntax-weight);
+}

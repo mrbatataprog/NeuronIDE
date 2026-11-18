@@ -1,0 +1,127 @@
+.folder-options-popup {
+    position: fixed;
+    top: auto;
+    left: auto;
+    transform: none;
+    margin: 0;
+    z-index: 10000;
+}
+
+.file-popup {
+    position: fixed;
+
+    width: 330px;
+    height: 430px;
+
+    background-color: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-sizing: border-box;
+
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    padding: 10px 0 0;
+
+    z-index: 10000;
+}
+
+.file-popup.popup-opening {
+    animation: popup-open 180ms ease-out forwards;
+}
+
+.file-popup.popup-closing {
+    animation: popup-close 140ms ease-in forwards;
+}
+
+@keyframes popup-open {
+    from {
+        opacity: 0;
+        scale: 0.96;
+    }
+    to {
+        opacity: 1;
+        scale: 1;
+    }
+}
+
+@keyframes popup-close {
+    from {
+        opacity: 1;
+        scale: 1;
+    }
+    to {
+        opacity: 0;
+        scale: 0.96;
+    }
+}
+
+.file-popup .selection {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 12px;
+  cursor: pointer;
+  z-index: 0;
+}
+
+.file-popup .selection::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  left: 8px;
+  right: 8px;
+  background-color: transparent;
+  border-radius: 5px;
+  z-index: -1;
+  transition: background-color 150ms ease;
+}
+
+.file-popup .selection:hover::before {
+  background-color: #2a2a2a;
+}
+
+.file-popup .selection .selection-shortcut {
+  margin-left: auto;
+  color: var(--text-color);
+  opacity: 0.6;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.file-popup .selection .selection-icon {
+  width: 16px;
+  height: 16px;
+
+  filter: brightness(0.6);
+  flex-shrink: 0;
+}
+
+.file-popup .unavaiable {
+  opacity: 0.6;
+}
+
+.file-popup .selection .selection-text {
+  color: rgb(195, 194, 196);
+  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: 0.1px;
+}
+
+
+.file-popup .separator {
+  width: 90%;
+  height: 1px;
+  background-color: var(--border);
+  flex-shrink: 0;
+  margin-inline: auto;
+}

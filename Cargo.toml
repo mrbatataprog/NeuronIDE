@@ -1,0 +1,13 @@
+[package]
+name = "BatataIDE"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = ["src-tauri"]
+resolver = "3"
+
+[dependencies]
+clipboard-rs = "0.3.5"
+wasm-bindgen = "0.2"
+
