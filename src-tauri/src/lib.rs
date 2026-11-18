@@ -74,6 +74,14 @@ pub struct FileScan {
     start_from: usize,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Package {
+    pub text: String,
+    pub end_position: i32,
+    pub end: bool,
+}
+
 impl FileScan {
     pub fn new(path: PathBuf, limit: Option<usize>, start_from: usize) -> Self {
         Self {
@@ -111,13 +119,6 @@ async fn scan_directory(path: String, limit: Option<usize>, start_from: usize) -
     }).await.map_err(|e| e.to_string())?
 }
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Package {
-    pub text: String,
-    pub end_position: i32,
-    pub end: bool,
-}
 
 #[tauri::command(rename_all = "camelCase")]
 async fn read_file(path: String, last_position: u64, load: usize,) -> Result<Package, String> {
@@ -235,6 +236,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(TerminalManager { terminals: Mutex::new(HashMap::new()), next_id: Mutex::new(0), })
         .setup(|app| {
+            // Terminal for the developing
             if cfg!(debug_assertions) {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
             }
@@ -254,7 +256,7 @@ pub fn run() {
         .expect("error while building tauri application");
 }
 
-const FILE_CLIPBOARD_FORMAT: &str = "application/x-batataide-file-list";
+const FILE_CLIPBOARD_FORMAT: &str = "application/x-neuronide-file-list";
 
 #[tauri::command]
 fn write_file_clipboard(payload: String) -> Result<(), String> {
@@ -371,7 +373,5 @@ async fn rename_element (path: String, new_name: String) -> Result<(), String> {
         }
 
         std::fs::rename(old_path, new_path).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    }).await.map_err(|e| e.to_string())?
 }

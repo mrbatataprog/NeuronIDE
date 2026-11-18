@@ -81,7 +81,7 @@ export class DomUpdate {
             dot.textContent = "•";
 
             name.textContent = entry.name + " ";
-            title.textContent = "~/Projects";
+            title.textContent = "~/Test"; // Hardcoded just for now.
             title.className = "purple_btn";
 
             name.appendChild(dot);

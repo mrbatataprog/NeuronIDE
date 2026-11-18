@@ -1225,7 +1225,7 @@ async function main(): Promise<void> {
     (window as any).editorModel = editor;
 
     model.addProject(Path, { 
-        name: "BatataIDE",
+        name: "Test-Directory",
         kind: "Directory",
         parent: null,
         is_open: false,
