@@ -17,3 +17,11 @@ minimizebtn?.addEventListener("click", async () => {
 maximizebtn?.addEventListener("click", async () => {
     await appWindow.toggleMaximize();
 });
+
+export function SetPath(path: string) {
+    sessionStorage.setItem("window_path", path);
+}
+
+export function GetPath() {
+    return sessionStorage.getItem("window_path");
+}

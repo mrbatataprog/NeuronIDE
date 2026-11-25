@@ -1,14 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { BackendAPI } from "../backend";
-import { FileEntry, FileType } from "../explorer";
+import { FileEntry, FileType, MenuModel, TabInfo } from "../explorer";
 import { FileManager } from "../explorer";
 import { ExplorerModel } from "../explorer";
-import { ListenToOptions } from "../../packages/options/options";
-import { ListenToMessage } from "../../packages/message/message";
-import { TabModel } from "../explorer";
+import { ListenToOptions } from "../../public/packages/options/options";
+import { ListenToMenu } from "../../public/packages/menu/menu";
 import { FileEntryDOM } from "../explorer";
-import { EventOptions } from "../explorer";
+
+import { FetchAsset } from "../../assets";
+
 export class DomUpdate {
     private model: ExplorerModel;
     private domElements = new Map<number, FileEntryDOM & { element: HTMLElement }>();
@@ -20,6 +21,7 @@ export class DomUpdate {
     constructor(model: ExplorerModel) {
         this.model = model;
     }
+
 
     public GetFileIcon(fileName: string): string {
         const dotIndex = fileName.lastIndexOf(".");
@@ -64,7 +66,7 @@ export class DomUpdate {
         stateIcon.src = "/icons/closed_folder.svg";
         stateIcon.alt = "";
         
-        icon.src = entry.parent === null ? "./icons/project_folder.svg" : this.GetFolderIcon(entry.name);
+        icon.src = entry.parent === null ? "./icons/menu/project_folder.svg" : this.GetFolderIcon(entry.name);
         icon.alt = "";
 
         row.className = "tree-folder-row";
@@ -81,7 +83,7 @@ export class DomUpdate {
             dot.textContent = "•";
 
             name.textContent = entry.name + " ";
-            title.textContent = "~/Projects";
+            // title.textContent = `~/${(entry.path ?? "").split(/[\\/]/)[3] ?? ""}`; // Just temperaly removed.
             title.className = "purple_btn";
 
             name.appendChild(dot);
@@ -93,8 +95,8 @@ export class DomUpdate {
 
         actions.className = "tree-actions";
 
-        AddFileIcon.src = "/icons/new_file.svg";
-        AddfolderIcon.src = "/icons/folder.svg";
+        AddFileIcon.src = "/icons/menu/new_file.svg";
+        AddfolderIcon.src = "/icons/menu/add_folder.svg";
         SearchIcon.src = "/icons/top_search.svg";
         CloseIcon.src = "/icons/close.svg";
 
@@ -175,6 +177,7 @@ export class DomUpdate {
         return file;
     }
 
+    
     public GetChildren(folderId: number): HTMLElement | null {
         return this.domElements.get(folderId)?.children ?? null;
     }
@@ -379,8 +382,8 @@ export class DomUpdate {
 
     public Render(entry: FileEntry, tree: HTMLElement): void {
         const id = entry.id;
+    
         if (id === undefined || this.domElements.has(id)) return;
-
         if (entry.kind !== "Directory") return;
 
         const folder = this.AddFolder(entry);
@@ -404,14 +407,24 @@ export class DomUpdate {
 
         children.style.display = "none";
     }
+    
+    public UnrenderChild(childId: number): void {
+        const entry = this.domElements.get(childId);
+        if (!entry) return;
+
+        entry.element.remove();
+        this.domElements.delete(childId);
+    }
 
     public RenderChildren(parentId: number, children: number[]): void {
+        console.log(`Rendering: ${children.length}`);
         for (const childId of children) {
             this.RenderChild(childId, parentId);
         }
     }
 
-    public RenderChild(childId: number | undefined, parentId: number | null): void {
+    
+    public RenderChild(childId: number | undefined, parentId: number | null, render = true) {
         if (childId === undefined || parentId === null) return;
 
         const container = this.GetChildren(parentId);
@@ -432,7 +445,22 @@ export class DomUpdate {
             }
         }
 
-        container.appendChild(element);
+        if (element.parentElement === container) return element;
+        if (render) { container.appendChild(element); }
+
+        return element;
+    }
+    
+ 
+    public RenderAllChildren(parentId: number, children: DocumentFragment, appened: "Up" | "Down") {
+        const container = this.GetChildren(parentId);
+        if (!container) return;
+
+        container.style.display = "block";
+
+        console.log(appened);
+        if (appened === "Down") { container.appendChild(children); return; }
+        if (appened === "Up") { container.prepend(children); return }
     }
 
     public HideChildren(parentId: number): void {
@@ -444,17 +472,13 @@ export class DomUpdate {
         }
     }
 
-    public RenderTabs(tabModel: TabModel, explorerModel: ExplorerModel): void {
+    public RenderTabs(entries: TabInfo[], selected: number, onSelected: (element: HTMLElement) => void): void {
         const filesExplorer = document.querySelector<HTMLElement>(".file_pos");
         if (!filesExplorer) return;
 
         filesExplorer.replaceChildren();
 
-        for (const fileId of tabModel.GetOpenFileIds()) {
-            const entry = explorerModel.GetElement(fileId);
-            if (!entry) continue;
-            if (!entry.id) continue;
- 
+        for (const entry of entries) {
             const tab = document.createElement("div");
             const icon = document.createElement("img");
             const close = document.createElement("img");
@@ -462,9 +486,6 @@ export class DomUpdate {
             tab.className = "explorer_file";
             tab.dataset.id = entry.id.toString();
 
-            if (tabModel.IsSelected(fileId)) {
-                tab.classList.add("selected_file");
-            }
 
             icon.src = this.GetFileIcon(entry.name);
             icon.alt = "";
@@ -477,6 +498,12 @@ export class DomUpdate {
             close.dataset.action = "close-tab";
 
             tab.append(icon, name, close);
+
+            if (selected === entry.id) {
+                tab.classList.add("selected_file");
+                onSelected(tab);
+            }
+
             filesExplorer.appendChild(tab);
         }
     }
@@ -490,7 +517,7 @@ export class DomUpdate {
             document.body.appendChild(container);
         }
 
-        const response = await fetch("/packages/options/options.html");
+        const response = await FetchAsset("/packages/options/options.html");
 
         if (!response.ok) {
             throw new Error(`Failed to load options.html: ${response.status}`);
@@ -499,7 +526,7 @@ export class DomUpdate {
         container.innerHTML = await response.text();
 
         const entry = this.model.GetElement(id);
-        const popup = container.querySelector<HTMLElement>(".file-popup");
+        const popup = document.getElementById("file-popup");
 
         if (!entry) throw new Error(`Entry ${id} not found`);
         if (!popup) throw new Error("File popup not found");
@@ -515,6 +542,44 @@ export class DomUpdate {
         ListenToOptions(entry, this.model, popup, closePopup, onExit);
     }
 
+    public async ShowWarning(cancle: () => void, deleteElement: () => void) {
+        let container = document.getElementById("message-container");
+
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "message-container";
+            document.body.appendChild(container);
+        }
+
+        const response = await FetchAsset("/packages/message/delete_warning.html");
+
+        if (!response.ok) {
+            throw new Error(`Failed to load error.html: ${response.status}`);
+        }
+
+        container.insertAdjacentHTML("beforeend", await response.text());
+
+        const popup = document.getElementById("warning-popup");
+        const background = document.getElementById("warning-background");
+
+        if (!popup) throw new Error("Warning popup not found");
+        if (!background) throw new Error("Warning background popup not found");
+    
+        popup.addEventListener("mousedown", (event: MouseEvent) => {
+            event.stopPropagation();
+
+            const target = event.target as HTMLElement;
+            const button = target.closest(".save_btn") as HTMLElement | null;
+
+            if (!button) return;
+
+            switch (button.id) {
+                case "cancel": popup.remove(); background.remove(); cancle(); break;
+                case "delete": deleteElement(); popup.remove(); background.remove(); break;
+            }
+        });
+    }
+
     public async ShowError(x: number, y: number): Promise<HTMLElement> {
         let container = document.getElementById("message-container");
 
@@ -524,7 +589,7 @@ export class DomUpdate {
             document.body.appendChild(container);
         }
 
-        const response = await fetch("/packages/error/error.html");
+        const response = await FetchAsset("/packages/error/error.html");
 
         if (!response.ok) {
             throw new Error(`Failed to load error.html: ${response.status}`);
@@ -541,5 +606,133 @@ export class DomUpdate {
         message.style.top = `${y}px`;
         
         return message;
+    }
+
+    public async ShowMenu(x: number, y: number, model: MenuModel, setPopup: (element: HTMLElement) => void, setSize: (size: number) => void, onExit: () => void): Promise<void> {
+        let container = document.getElementById("message-container");
+
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "message-container";
+            document.body.appendChild(container);
+        }
+
+        const response = await FetchAsset("packages/menu/menu.html");
+        const html = await response.text();
+        container.innerHTML = html;
+
+        const popup = document.getElementById("menu-popup");
+
+        if (!popup) throw new Error("Menu popup not found");
+
+        setSize(popup.getBoundingClientRect().width ?? 0);
+
+        popup.style.position = "fixed";
+        popup.style.left = `${x + 2}px`;
+        popup.style.top = `${y + 5}px`;
+
+        setPopup(popup);
+        ListenToMenu(model, popup, onExit, onExit);
+    }
+
+    public async ShowRecent(x: number, y: number, width: number): Promise<HTMLElement> {
+        const popup = document.createElement("div");
+        popup.className = "popup recent";
+        popup.id = "recent";
+
+        console.log(x + width);
+        popup.style.left = `${x + width + 5}px`;
+        popup.style.top = `${y}px`;
+
+        document.body.appendChild(popup);
+        return popup;
+    }
+
+    public async AddRecent(ui: HTMLElement, path: string, text: string, separate: boolean) {
+        const selection = document.createElement("div");
+        const icon = document.createElement("img");        
+        const label = document.createElement("span");
+        const time = document.createElement("div");
+        const options = document.createElement("img");
+
+        selection.className = "selection";
+        selection.dataset.path = path;
+
+        icon.className = "selection-icon";
+        icon.src = "./icons/menu/project_folder.svg";
+
+        label.className = "selection-text";
+        label.textContent = path || text;
+
+        time.className = "selection-shortcut";
+        time.textContent = text;
+
+        options.className = "selection-shortcut-icon";
+        options.src = "./icons/dots.svg";
+        options.dataset.type = "more";
+        options.dataset.path = path;
+
+        selection.appendChild(icon);
+        selection.appendChild(label);        
+        selection.appendChild(time);
+        selection.appendChild(options);
+
+        ui.appendChild(selection);
+
+        if (separate) {
+            const separator = document.createElement("div");
+            separator.className = "separator";
+            ui.appendChild(separator);
+        }
+    }
+
+    public RemoveRecent(element: HTMLElement | null): void {
+        if (!element) return;
+
+        const previous = element.previousElementSibling;
+
+        if (previous?.classList.contains("separator")) {
+            previous.remove();
+        }
+
+        element.remove();
+    }
+
+    public async ShowMore_Recent(path: string, width: number, x: number, y: number) {
+        const response = await FetchAsset("packages/menu/more.html");
+        const html = await response.text();
+
+        let container = document.getElementById("message-container");
+
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "message-container";
+            document.body.appendChild(container);
+        }
+
+        container.insertAdjacentHTML("beforeend", html);
+
+        const popup = document.getElementById("more_recent");
+
+        if (!popup) return null;
+
+        popup.style.left = `${x + width + 6}px`;
+        popup.style.top = `${y - 10}px`;
+
+
+        return popup;
+    }
+
+    
+    public ResetDom(): void {
+        this.CloseCreateUI();
+
+        for (const { element } of this.domElements.values()) {
+            element.remove();
+        }
+
+        this.domElements.clear();
+
+        document.getElementById("message-container")?.replaceChildren();
     }
 }

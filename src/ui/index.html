@@ -49,24 +49,27 @@
       </div>
 
       <div class="panel_base explorer_frame" id="main_explorer">
-        <div class="type_options">
-          <div class="buttons selected_button">Explorer</div>
-          <div class="buttons">Properties</div>
+            <div class="type_options">
+                <div class="buttons selected_button">Explorer</div>
+                <div class="buttons">Properties</div>
+            </div>
+
+            <div class="explorer_scroll" id="scroll_frame">
+                <div id="tree" class="tree"></div>
+            </div>
         </div>
 
-        <div id="tree" class="tree">
-    
-        </div>
-      </div>
-
-      <div class="panel_base flex_center top_options">
+      <div class="panel_base flex_center top_options" id="top_options">
         <div class="option_part">
-          <img src="./icons/menu.svg">
-          <div class="project_selection">
-            <img src="./icons/logo.png" class="right-icon"> 
-            <span class="project_called project">NeuronIDE - Default Window</span>
-            <img src="./icons/down.svg" class="left-icon">
-          </div>
+            <div class="menu_button">
+                <img src="./icons/menu.svg" id="menu">
+            </div>
+
+            <div class="project_selection">
+                <img src="./icons/logo.png" class="right-icon"> 
+                <span class="project_called project">NeuronIDE - Default Window</span>
+                <img src="./icons/down.svg" class="left-icon">
+            </div>
         </div>
   
         <div class="screen_type">
@@ -89,7 +92,7 @@
         <div class="user">
           <div class="profile_photo"><img src="./icons/settings/user.png"></div>
           <div class="username">
-            <span>MrBatata</span>
+            <span>Test User</span>
             <img src="./icons/settings/pen.svg">
             <img src="./icons/settings/new_account.svg">
             <img src="./icons/settings/settings.svg">
@@ -139,7 +142,7 @@
 
       <div class="panel_base code_editor">
         <div class="files_explorer">
-          <div class="file_pos"></div>
+          <div class="file_pos" id="file_pos"></div>
           <div class="actions_pos">
             <img src="./icons/copy.svg">
             <img src="./icons/top_search.svg">
@@ -212,5 +215,6 @@
       </div>
       <script type="module" src="./init.ts"></script>
       </div>
+
   </body>
 </html>

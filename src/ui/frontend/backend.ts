@@ -13,10 +13,11 @@ export class BackendAPI {
         });
     }
 
-    public async SaveFile(path: string, content: string): Promise<void> {
+    public async SaveFile(path: string, content: string, asExt = false): Promise<void> {
         await invoke("save_file", {
             path,
             content,
+            asExt
         });
     }
 
@@ -72,7 +73,7 @@ export class BackendAPI {
     }
 
     public async ReadFileClipboard(): Promise<string | null> {
-        return invoke<string | null>("read_file_clipboard");
+        return invoke<string | null>("read_clipboard");
     }
 
     public async MoveFolder(from: string, to: string): Promise<void> {
@@ -131,5 +132,35 @@ export class BackendAPI {
             paths,
             to,
         })
+    }
+
+    
+    public OpenFile(path: string): Promise<string | null> {
+        return invoke("open_file", { path });
+    }
+
+    public OpenFolder(path: string): Promise<string | null> {
+        return invoke("open_folder", { path });
+    }
+
+    public NewFile(path: string): Promise<string | null> {
+        return invoke("new_file", { path });
+    }
+
+    public NewWindow(path = ""): Promise<void> {
+        return invoke("new_window", { path });
+    }
+
+    public async GetRecent(): Promise<Record<string, { Date: string }>> {
+        const json = await invoke<string>("get_recent");
+        return JSON.parse(json);
+    }
+
+    public WriteRecent(path: string, date: string): Promise<void> {
+        return invoke("write_recent", { path, date });
+    }
+
+    public RemoveRecent(path: string) {
+        return invoke("remove_recent", { path });
     }
 }

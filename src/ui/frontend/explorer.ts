@@ -2,11 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { BackendAPI } from "./backend";
 import { EditorModel } from "./editor";
 import { DomUpdate } from "./Dom/tree";
-import { event } from "@tauri-apps/api";
-import { Position } from "@tauri-apps/api/dpi";
-import { FileStorage } from "../packages/core/core";
+import init, { FileStorage } from "./packages/core/core";
+import types, { InitOutput  } from "./packages/core/core";
 
-export const Path = "C:\\Users\\Client\\Desktop\\Projects";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { SetPath, GetPath } from "./window";
+import { event } from "@tauri-apps/api";
+export const Path = "C:\\Users\\Client\\Desktop\\Projects\\BatataIDE";
 
 export type RustFileEntry = {
     name: string;
@@ -32,6 +34,13 @@ export interface FileStats {
     loadedPackages: number;
     loadedLines: number;
 }
+
+interface Recent {
+    path: string,
+    text: string,
+    current: number,
+}
+
 
 export type FileType =  "Unknown" | "File" | "Directory";
 
@@ -59,6 +68,7 @@ export interface FileEntry {
     name: string;
     kind: FileType;
     parent: number | null;
+    path?: string,
     children?: Set<number>;
     loaded?: boolean;
     is_open: boolean;
@@ -72,21 +82,38 @@ export interface FileEntry {
     toggleElement?: HTMLImageElement;
 }
 
+export interface TabInfo {
+    name: string,
+    path?: string,
+    id: number,
+}
+
 type MoveElements = {
     type: string;
     action: "cut" | "copy";
     paths: string[];
 };
 
+
 let coreStorage: FileStorage | null = null;
+let coreInit: Promise<InitOutput> | null = null;
 
 export async function InitializeCore(): Promise<FileStorage> {
-    if (!coreStorage) {
-        coreStorage = new FileStorage();
-    }
+  if (!coreInit) {
+    coreInit = init();
+  }
 
-    return coreStorage;
+  await coreInit;
+
+  if (!coreStorage) {
+    coreStorage = new FileStorage();
+  }
+
+  return coreStorage;
 }
+
+export function GetName(path: string): string { return path.split(/[\\/]/).filter(Boolean).pop() ?? ""; }
+export function GetParts(path: string): string[] { return path.split(/[\\/]/).filter(Boolean); }
 
 export abstract class FileManager {
     protected workers: WorkOperation[] = [];
@@ -109,14 +136,22 @@ export abstract class FileManager {
     protected paste = false;
     protected storage: FileStorage;
 
+    protected renderedIds = new Set<number>();
+    private previousScrollTop = 0;
+
+
     constructor(
         protected readonly tree: HTMLElement,
-        protected readonly path: string,
+        protected readonly scroll_frame: HTMLElement,
+        protected path: string,
         storage: FileStorage
     ) {
         this.api = new BackendAPI();
         this.opened_file = 0;
         this.storage = storage;
+    }
+
+    public InitializeEvents(): void {
         this.EventInput();
     }
 
@@ -179,7 +214,6 @@ export abstract class FileManager {
         this.OpenFolder(parentId);
 
         const folder = this.dom.MakeFolder(parentId);
-        const path = this.GetPath_(parentId);
         if (!folder?.input) return;
 
         const register = (): void => {
@@ -202,7 +236,6 @@ export abstract class FileManager {
         this.OpenFolder(parentId);
 
         const file = this.dom.MakeFile(parentId);
-        const path = this.GetPath_(parentId);
 
         if (!file?.input) return;
 
@@ -239,7 +272,7 @@ export abstract class FileManager {
             const newName = input.input?.value.trim();
             if (!newName) return;
             
-            await this.RenameElement(id, newName);
+            this.RenameElement(id, newName);
         };
 
         const compare = (): boolean => {
@@ -252,7 +285,7 @@ export abstract class FileManager {
     }
 
     public HandleDelete() {
-        this.DeleteElement();
+        this.dom.ShowWarning(() => { return; }, () => { this.DeleteElement(); });
     }
 
     public HandleCut() {
@@ -263,26 +296,56 @@ export abstract class FileManager {
         this.CopyElements();
     }
 
+    public HandleNewWindow(id: number) {
+        this.api.NewWindow(this.GetPath_(id));
+    }
+
     private EventInput(): void {
-        // Will not be implemented now
-        // Coming soon.
+        this.scroll_frame.addEventListener("scroll", () => {
+            const rowHeight = 22;
+            const buffer = 60;
 
-        // this.tree.addEventListener("scroll", () => {
-        //     const rowHeight = 26;
-        //     const buffer = 20;
+            const scrollTop = this.scroll_frame.scrollTop;
+            const viewportHeight = this.scroll_frame.clientHeight;
 
-        //     const scrollTop = this.tree.scrollTop;
-        //     const viewportHeight = this.tree.clientHeight;
+            const totalCount = this.storage.get_visible_count();
 
-        //     const startPosition = Math.max(0, scrollTop - buffer * rowHeight);
-        //     const endPosition = scrollTop + viewportHeight + buffer * rowHeight;
+            const firstIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - buffer);
+            const lastIndex = Math.min(totalCount, Math.ceil((scrollTop + viewportHeight) / rowHeight) + buffer);
 
-        //     const firstIndex = Math.floor(startPosition / rowHeight);
-        //     const lastIndex = Math.ceil(endPosition / rowHeight);
+            const currentIds = new Set<number>();
+            const fragment = document.createDocumentFragment();
+            const direction = firstIndex < this.previousScrollTop ? "Up" : "Down";
 
-        //     const render = this.visibleRows.slice(firstIndex, lastIndex);
+            for (let i = firstIndex; i < lastIndex; i++) {
+                const id = this.storage.get_visible_element(i);
 
-        // });
+                if (id === undefined) continue;
+
+                currentIds.add(id);
+
+                if (this.renderedIds.has(id)) continue; 
+                const child = this.dom.RenderChild(id, this.storage.get_parent(id) ?? null, false);
+                if (child) { fragment.appendChild(child); }
+            }
+
+            for (const id of this.renderedIds) {
+                if (id === 1) continue;
+
+                if (!currentIds.has(id)) {
+                    this.dom.UnrenderChild(id);
+                    this.renderedIds.delete(id);
+                }
+            }
+
+            this.dom.RenderAllChildren(1, fragment, direction);
+            this.renderedIds = currentIds;
+            this.previousScrollTop = firstIndex;
+
+            this.tree.style.paddingTop = `${firstIndex * rowHeight}px`;
+            this.tree.style.paddingBottom = `${Math.max(0, totalCount - lastIndex) * rowHeight}px`;
+        });
+
 
         this.tree.addEventListener("mousedown", (event: MouseEvent) => {
             if (event.button !== 0) return;
@@ -406,7 +469,7 @@ export abstract class FileManager {
 
     protected CutElements(): void {}
     protected OpenExplorer(id: number): void {}
-    protected OpenFile(id: number, onCreate = false): void {}
+    protected OpenFile(id: number): void {}
     protected OpenFolder(id: number): void {}
     protected OnFolderClick(id: number): void {}
     protected OnFileClick(id: number, onCreate = false): void {}
@@ -431,13 +494,14 @@ export abstract class FileManager {
 }
 
 export class ExplorerModel extends FileManager {
-    constructor(tree: HTMLElement,path: string, storage: FileStorage) {
-        super(tree, path, storage);
+    constructor(tree: HTMLElement, explorer_frame: HTMLElement, path: string, storage: FileStorage) {
+        super(tree, explorer_frame, path, storage);
     }
 
     protected GetElementByName(name: string | undefined, parentId: number | null = null): FileEntry | undefined {
         if (!name) return undefined;
 
+        // Check this
         const ids = parentId !== null ? this.storage.get_children(parentId) : this.storage.get_all_ids();
 
         for (const id of ids) {
@@ -449,12 +513,17 @@ export class ExplorerModel extends FileManager {
 
         return;
     }
+    
+
+    public setPath(path: string) {
+        SetPath(path);
+        this.path = path;
+    }
 
     public addProject(path: string, info: FileEntry): number {
         const kind = info.kind === "File" ? 0 : info.kind === "Directory" ? 1 : 2;
-        const id = this.storage.add_element(info.name, kind);
 
-        return id;
+        return this.storage.add_element(info.name, kind, undefined, path);
     }
 
     protected override OpenExplorer(id: number) {
@@ -474,6 +543,17 @@ export class ExplorerModel extends FileManager {
         return elements.paths.includes(path);
     }
 
+    public SaveFile(id: number | null, asExt = false) {
+        if (id === null) {
+            this.api.SaveFile(this.GetPath(this.opened_file), this.editor.GetSaved(), asExt);
+            this.editor.RemoveContext(this.opened_file);
+            return;
+        }
+
+        this.api.SaveFile(this.GetPath(id), this.editor.GetSavedForContext(id), asExt);
+        this.editor.RemoveContext(id);
+    }
+
     protected override async CopyElementsByPath(paths: string[], to: number): Promise<void> {
         this.storage.clear_copied_elements();
 
@@ -487,7 +567,7 @@ export class ExplorerModel extends FileManager {
 
         for (let i = 0; i < paths.length; i++) {
             const path = paths[i];
-            const name = path.split(/[\\/]/).filter(Boolean).pop() ?? "";
+            const name = GetName(path);
 
             const source = this.GetElementByName(name);
             const kind = source?.kind ?? types[i];
@@ -516,7 +596,7 @@ export class ExplorerModel extends FileManager {
         this.api.MoveElements(paths, target_path);
 
         for (const path of paths) {
-            const name = path.split(/[\\/]/).filter(Boolean).pop();
+            const name = GetName(path);
             let id = 0;
 
             const element = this.GetElementByName(name);
@@ -561,12 +641,10 @@ export class ExplorerModel extends FileManager {
                 if (child.children) { elements.push(...child.children); }
             }
 
-            try {
-                await this.api.DeleteElement(path);
-            } catch (error) {
+            await this.api.DeleteElement(path).catch((error) => {
                 console.error("Deletion failed:", error);
                 return;
-            }
+            });
 
             for (const id of elements) {
                 const element = this.GetElement(id);
@@ -600,6 +678,8 @@ export class ExplorerModel extends FileManager {
 
         if (isOpen) {
             this.dom.UnrenderChildren(id);
+            this.storage.close_directory(id);
+            this.UpdateScrollHeight();
         } else {
             this.QueueScan(this.GetPath(id), 50, id);
         }
@@ -678,7 +758,7 @@ export class ExplorerModel extends FileManager {
         dom.icon.src = entry.kind === "Directory" ? this.dom.GetFolderIcon(newName) : this.dom.GetFileIcon(newName);
         dom.element.dataset.name = newName;
 
-        this.dom.RenderTabs(this.tab, this);
+        this.tab.RenderTabs();
     }
 
     protected override async CutElements(): Promise<void> {
@@ -698,7 +778,7 @@ export class ExplorerModel extends FileManager {
         const data: MoveElements = {
             type: "nerounIDE-file",
             action: "cut",
-            paths: Array.from(elements, id => this.GetPath(id))
+            paths: Array.from(elements, id => this.GetPath(id as number))
         };
 
         try {
@@ -731,7 +811,7 @@ export class ExplorerModel extends FileManager {
         const data: MoveElements = {
             type: "nerounIDE-file",
             action: "copy",
-            paths: Array.from(elements, id => this.GetPath(id))
+            paths: Array.from(elements, id => this.GetPath(id as number))
         };
 
         try {
@@ -748,7 +828,8 @@ export class ExplorerModel extends FileManager {
 
     protected override async ReadClipboard(): Promise<MoveElements | undefined> {
         try {
-            const clipboard = await navigator.clipboard.readText();
+            const clipboard = await this.api.ReadFileClipboard();
+            if (!clipboard) { return; }
 
             return JSON.parse(clipboard) as MoveElements;
         } catch (error) {
@@ -756,8 +837,8 @@ export class ExplorerModel extends FileManager {
         }
     }
 
-    public OpenFile(id: number, onCreate = false) {
-        this.OnFileClick(id, onCreate);
+    public OpenFile(id: number) {
+        this.OnFileClick(id);
     }
 
     protected override UnSelectAll(): void {
@@ -780,7 +861,7 @@ export class ExplorerModel extends FileManager {
         this.storage.clear_selected_elements();
     }
 
-    protected override async OnFileClick(id: number, onCreate = false) {
+    protected override async OnFileClick(id: number) {
         this.fileController?.abort();
         this.fileController = new AbortController();
 
@@ -795,17 +876,15 @@ export class ExplorerModel extends FileManager {
         if (originalFile) {
             this.storage.set_open(this.opened_file, false);
 
-            if (originalFile.element) {
-                originalFile.element.style.backgroundColor = "";
-            }
+            if (originalFile.element) { originalFile.element.style.backgroundColor = ""; }
         }
 
         this.opened_file = id;
         const filePath = document.getElementById("file-path");
 
         if (filePath) {
-            const parts = this.GetPath(id).split(/[\\/]/).filter(Boolean);
-            const folder = this.path.split(/[\\/]/).filter(Boolean).pop();
+            const parts = GetParts(this.GetPath(id));
+            const folder = GetParts(this.path).pop();
 
             const pathIndex = parts.indexOf(folder!);
             const displayPath = pathIndex !== -1 ? "../" + parts.slice(pathIndex).join("/") : parts.pop() ?? "";
@@ -818,16 +897,10 @@ export class ExplorerModel extends FileManager {
         }
 
         this.storage.set_open(id, true);
-        this.editor.ResetEditor();
 
-        if (onCreate) {
-            await this.editor.NewRender();
-            return;
-        }
+        if (!this.editor.HasContext(id)) {
+            this.editor.CreateContext(id);
 
-        const content = this.storage.get_content(id);
-
-        if (content === undefined) {
             const path = this.GetPath(id);
             const predenting: Package[] = [];
 
@@ -836,6 +909,16 @@ export class ExplorerModel extends FileManager {
             let processing = false;
             let rendered = false;
             let firstLoad = true;
+
+            const getInitialChunkSize = (): number => {
+                const charWidth = 7.697265625;
+                const lineHeight = 21;
+
+                const columns = Math.floor(screen.width / charWidth);
+                const rows = Math.floor(screen.height / lineHeight);
+
+                return columns * rows;
+            };
 
             const processQueue = async () => {
                 if (processing || signal.aborted) return;
@@ -860,35 +943,17 @@ export class ExplorerModel extends FileManager {
             };
 
             while (!signal.aborted) {
-                let value = 0;
+                const value = firstLoad ? getInitialChunkSize() : 0;
+                const pack = await this.api.ReadFile(path, lastPosition, firstLoad ? value : 256 * 1024);
 
-                if (firstLoad) {
-                    const charWidth = 7.697265625;
-                    const lineHeight = 21;
-                    const columns = Math.floor(screen.width / charWidth);
-                    const rows = Math.floor(screen.height / lineHeight);
-
-                    value = columns * rows;
-                }
-
-                const pack = await this.api.ReadFile(
-                    path,
-                    lastPosition,
-                    firstLoad ? value : 256 * 1024
-                );
-
+                // Incase nothing to render
                 if (firstLoad && pack.text.length === 0 && pack.end) {
                     await this.editor.NewRender();
-                    this.storage.set_content(id, "");
                     return;
                 }
 
                 if (signal.aborted) return;
-
-                if (pack.text.length > 0) {
-                    predenting.push(pack);
-                    void processQueue();
-                }
+                if (pack.text.length > 0) { predenting.push(pack); void processQueue(); }
 
                 lastPosition += pack.endPosition;
                 firstLoad = false;
@@ -908,58 +973,25 @@ export class ExplorerModel extends FileManager {
 
         if (signal.aborted) return;
 
-        await this.editor.Insert(content);
-
-        if (signal.aborted) return;
-
-        await this.editor.NewRender();
-    }
-
-    private scrollSpacer!: HTMLDivElement;
-
-    private InitScrollHeight(): void {
-        if (this.scrollSpacer) return;
-
-        this.scrollSpacer = document.createElement("div");
-        this.scrollSpacer.style.height = "0px";
-        this.scrollSpacer.style.width = "1px";
-        this.scrollSpacer.style.pointerEvents = "none";
-
-        this.tree.appendChild(this.scrollSpacer);
+        this.editor.SwitchContext(id);
     }
 
     private UpdateScrollHeight(): void {
-        const rowHeight = 26;
-
-        this.scrollSpacer.style.height = `${this.storage.len() * rowHeight}px`;
-    }
-
-    private GetElementRow(element: FileEntry): HTMLElement | null {
-        if (element.id === undefined) return null;
-
-        return this.dom.GetDOM(element.id)?.row ?? null;
+        this.scroll_frame.dispatchEvent(new Event("scroll"));
     }
 
     private SortElements(parentId: number): number[] {
-        return Array.from(this.storage.get_children(parentId)).sort((a, b) => {
-            const elementA = this.GetElement(a);
-            const elementB = this.GetElement(b);
-
-            if (!elementA || !elementB) return 0;
-
-            const folderOrder = Number(elementB.kind === "Directory") - Number(elementA.kind === "Directory");
-
-            return folderOrder || elementA.name.localeCompare(elementB.name);
-        });
+        return Array.from(this.storage.get_children(parentId));
     }
 
     public QueueScan(path: string, limit: number, parentId: number): void {
         const dir = this.GetElement(parentId);
 
         if (!dir || dir.kind !== "Directory") return;
-
         if (dir.loaded) {
-            this.dom.RenderChildren(parentId, this.SortElements(parentId));
+            this.dom.RenderChildren(parentId, this.SortElements(parentId).slice(0, 50));
+            this.storage.open_directory(parentId);
+            this.UpdateScrollHeight();
             return;
         }
 
@@ -967,20 +999,24 @@ export class ExplorerModel extends FileManager {
     }
 
     private async ScanDirectory(path: string, parentId: number): Promise<void> {
-        this.InitScrollHeight();
-        
-        void this.api.OpenDirectory(path, null).then(entries => {
+        try {
+            const entries = await this.api.OpenDirectory(path, null);
             if (!entries) return;
 
-            console.log(`scanning: ${path} | Entries: ${entries}`);
-            this.ManageElements(path, parentId, entries);
+            this.ManageElements(parentId, entries);
+
+            const sortedElements = this.SortElements(parentId);
+
+            this.storage.open_directory(parentId);
+            this.dom.RenderChildren(parentId, sortedElements.slice(0, 50));
             this.UpdateScrollHeight();
-        }).catch(console.error);
+        } catch (error) {
+            console.error(error);
+        }
     }
 
-    private ManageElements(path: string, parentId: number, entries: RustFileEntry[]): void {
+    private ManageElements(parentId: number, entries: RustFileEntry[]): void {
         const parent = this.GetElement(parentId);
-
         if (!parent || parent.kind !== "Directory") return;
 
         for (const entry of entries) {
@@ -989,9 +1025,6 @@ export class ExplorerModel extends FileManager {
         }
 
         this.storage.set_loaded(parentId, true);
-
-        const sortedElements = this.SortElements(parentId);
-        this.dom.RenderChildren(parentId, sortedElements.slice(0, 50));
     }
 
     public override async CreateFolder(parentId: number, name: string): Promise<number> {
@@ -1031,6 +1064,10 @@ export class ExplorerModel extends FileManager {
         return id;
     }
 
+    public RegisterFile(name: string, path: string) {
+        return this.storage.add_element(name, 0, undefined, path);
+    }
+
     public UpdateExplorer(): void {
         const tree = document.getElementById("tree");
 
@@ -1039,9 +1076,9 @@ export class ExplorerModel extends FileManager {
             return;
         }
 
-        const ids = this.storage.get_all_ids();
+        tree.replaceChildren();
 
-        for (const id of ids) {
+        for (const id of this.storage.get_all_ids()) {
             const entry = this.GetElement(id);
 
             if (!entry || entry.kind !== "Directory") continue;
@@ -1058,6 +1095,13 @@ export class ExplorerModel extends FileManager {
         return this.GetElement(id, is_project);
     }
 
+    private GetElementRow(element: FileEntry): HTMLElement | null {
+        if (element.id === undefined) return null;
+
+        return this.dom.GetDOM(element.id)?.row ?? null;
+    }
+
+
     public GetElement(id: number, is_project = false): FileEntry | undefined {
         if (!this.storage.contains(id)) return undefined;
 
@@ -1070,6 +1114,8 @@ export class ExplorerModel extends FileManager {
             name,
             kind: kind === 0 ? "File" : kind === 1 ? "Directory" : "Unknown",
             parent: parent ?? null,
+
+            path: this.storage.get_path(id) ?? undefined,
             is_open: this.storage.get_open(id),
             loaded: this.storage.get_loaded(id),
         };
@@ -1078,6 +1124,7 @@ export class ExplorerModel extends FileManager {
     public GetPath(id: number): string {
         const entry = this.GetElement(id);
 
+        if (entry?.path) { return entry.path }
         if (!entry) {
             throw new Error(`Element with ID ${id} was not found`);
         }
@@ -1088,8 +1135,24 @@ export class ExplorerModel extends FileManager {
 
         return `${this.GetPath(entry.parent)}\\${entry.name}`;
     }
-}
 
+    public HasElementByPath(path: string) {
+        for (const id of this.storage.get_all_ids()) {
+            const path = this.GetPath(id);
+
+            if (path === path) { return true; }
+        } 
+
+        return false;
+    }
+
+    public ResetExplorer(): void {
+        this.storage.clear();
+        this.renderedIds.clear();
+
+        this.scroll_frame.scrollTop = 0;
+    }
+}
 
 export class TabModel {
     private selectedFileId: number | null = null;
@@ -1097,26 +1160,85 @@ export class TabModel {
     private dom: DomUpdate;
     private explorer: ExplorerModel;
     private editor!: EditorModel;
-
-    constructor(dom: DomUpdate, explorer: ExplorerModel) {
+    private tab: HTMLElement;
+    private selectedTab: HTMLElement | null;
+    constructor(dom: DomUpdate, explorer: ExplorerModel, tab: HTMLElement) {
         this.dom = dom;
         this.explorer = explorer;
-
+        this.tab = tab;
+        this.selectedTab = null;
         
-        this.bindTabEvents();
+        this.EventInput();
     }
 
     public SetEditor(editor: EditorModel) {
         this.editor = editor;
     }
+
+    private EventInput(): void {
+        this.tab.addEventListener("mousedown", (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            const id = target.dataset.id;
+    
+            if (id === undefined) { return; }
+            if (Number(id) === this.selectedFileId) { return; }
+
+            target.classList.add("selected_file");
+            target.style.backgroundColor = "#202020";
+
+            if (this.selectedTab) { 
+                this.selectedTab.classList.remove("selected_file");
+                this.selectedTab.style.backgroundColor = "";
+            }
+
+            this.selectedTab = target;
+            this.selectedFileId = Number(id);
+            this.explorer.OpenFile(Number(id));
+        });
+
+        this.tab.addEventListener("mouseover", (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            
+            target.style.backgroundColor = "#202020";
+        });
+
+        this.tab.addEventListener("mouseout", (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            const id = target.dataset.id;
+
+            if (Number(id) === this.selectedFileId) { return; }
+            target.style.backgroundColor = "";
+        });
+    }
     
     public OpenTab(fileId: number): void {
-        if (!this.IsOpen(fileId)) {
-            this.openFileIds.push(fileId);
-        }
+        if (!this.IsOpen(fileId)) { this.openFileIds.push(fileId); }
 
         this.selectedFileId = fileId;
-        this.dom.RenderTabs(this, this.explorer);
+        this.RenderTabs();
+    }
+
+    public RenderTabs() {
+        const paths: Set<string> = new Set();
+        const names: Set<string> = new Set();
+        const entries: TabInfo[] = [];
+        
+        for (const fileId of this.GetOpenFileIds()) {
+            const element = this.explorer.GetElement(fileId);
+            if (!element) { return; }
+
+            const path = paths.has(element.path ?? "");
+            const name = names.has(element.name);
+
+            if (path && name) { continue; }
+
+            entries.push({ name: element.name, path: element.path, id: fileId });
+
+            paths.add(element.path ?? this.explorer.GetPath(fileId));
+            names.add(element.name);
+        }
+        
+        this.dom.RenderTabs(entries, this.selectedFileId ?? 0, (element: HTMLElement) => { this.selectedTab = element; });
     }
 
     public IsSelected(fileId: number): boolean { return this.selectedFileId === fileId; }
@@ -1124,95 +1246,297 @@ export class TabModel {
     public GetOpenFileIds(): readonly number[] { return this.openFileIds; }
     public GetSelectedFileId(): number | null { return this.selectedFileId; }
 
-        
-    private bindTabEvents(): void {
-        const filesExplorer = document.querySelector<HTMLElement>(".file_pos");
+    public HasElementByName(name: string) {
+        for (const id of this.openFileIds) {
+            const element_name = this.explorer.GetElement(id)?.name;
 
-        if (!filesExplorer) {
-            console.error(".file_pos not found");
-            return;
+            if (name === element_name) { return true; }
         }
 
-        filesExplorer.addEventListener("pointerover", this.handleTabPointerOver);
-        filesExplorer.addEventListener("pointerout", this.handleTabPointerOut);
-        filesExplorer.addEventListener("click", this.handleTabClick);
+        return false;
     }
 
-    private readonly handleTabPointerOver = (event: PointerEvent): void => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
+    public HasElementByPath(path: string) {
+        for (const id of this.openFileIds) {
+            const element_path = this.explorer.GetElement(id)?.path;
 
-        const tab = target.closest<HTMLElement>(".explorer_file");
-        if (!tab) return;
-
-        if (event.relatedTarget instanceof Node && tab.contains(event.relatedTarget)) {
-        return;
+            if (path === element_path) { return true;}
         }
 
-        tab.style.backgroundColor = "#202020";
-    };
+        return false;
+    }
 
-    private readonly handleTabPointerOut = (event: PointerEvent): void => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
+    public ResetTab() {
+        this.selectedFileId = 0;
+        this.openFileIds = [];
+    }
+}
 
-        const tab = target.closest<HTMLElement>(".explorer_file");
-        if (!tab) return;
+export class MenuModel {
+    private path: string;
+    private selected_path: string;
 
-        if (event.relatedTarget instanceof Node && tab.contains(event.relatedTarget)) { return; }
+    private menuPopup!: HTMLElement;
+    private menu: HTMLElement;
+    private explorer: ExplorerModel;
+    private apis: BackendAPI;
+    private tab: TabModel;
+    private dom: DomUpdate
+    private recent!: HTMLElement | null;
+    private recent_more!: HTMLElement | null;
+    private isMenuOpen = false;
+    private menuWidth = 0;
+
+    constructor(menu: HTMLElement, explorer: ExplorerModel, tab: TabModel, dom: DomUpdate, path: string) {
+        this.path = path;
+        this.selected_path = "";
+        this.menu = menu;
+        this.dom = dom;
+        this.explorer = explorer;
+        this.tab = tab;
+        this.apis = new BackendAPI();
+
+        this.EventInput();
+    }
+
+    private EventInput() {
+        this.menu.addEventListener("mousedown", async (event: MouseEvent) => {
+            if (this.isMenuOpen) { this.CloseMenu(); return; }
+
+            const target = event.target as HTMLElement;
+            const menuIcon = target.closest("#menu");
+
+            if (menuIcon instanceof HTMLElement) {
+                const rect = menuIcon.getBoundingClientRect();
+
+                this.isMenuOpen = true;
+                await this.dom.ShowMenu(rect.left, rect.bottom, this, 
+                    (element: HTMLElement) => { this.menuPopup = element; }, 
+                    (size: number) => { this.menuWidth = size }, 
+                    () => { this.CloseMenu() 
+                });
+            }
+        });
+    }
     
-        tab.style.backgroundColor = "";
-    };
+    private CloseMenu() {
+        this.recent?.remove();
+        this.recent_more?.remove();        
+        this.menuPopup.remove();
 
-    private readonly handleTabClick = (event: MouseEvent): void => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
+        this.recent = null;
+        this.recent_more = null;
+        this.isMenuOpen = false;
+    }
 
-        const tab = target.closest<HTMLElement>(".explorer_file");
-        if (!tab) return;
+    private OpenFolder(path: string) {        
+        const folderName = GetName(path);
 
-        const id = Number(tab.dataset.id);
-        if (!Number.isFinite(id)) return;
+        this.apis.WriteRecent(path, Math.floor(Date.now() / 1000).toString());
+        this.explorer.ResetExplorer();
+        this.tab.ResetTab();
+        this.dom.ResetDom();
 
-        const entry = this.explorer.GetElement(id);
-        if (!entry) return;
+        this.explorer.setPath(path);
+        this.explorer.addProject(path, {
+            name: folderName,
+            kind: "Directory",
+            parent: null,
+            path: path,
+            is_open: false,
+        });
 
-        const close = target.closest<HTMLElement>(".exit");
+        this.explorer.UpdateExplorer();
+    }
 
-        if (close) {
-            event.stopPropagation();
-            // void this.dom.ShowMessage(id);
+    public async HandleOpenFile() {
+        const path = await this.apis.OpenFile(this.path);
+
+        if (!path) return;
+
+        const fileName = GetName(path);
+        if (this.tab.HasElementByPath(path)) { return; }
+
+        const id = this.explorer.RegisterFile(fileName, path);
+
+        this.explorer.OpenFile(id);
+        this.tab.OpenTab(id);
+    }
+
+    public async HandleOpenFolder() {
+        const path = await this.apis.OpenFolder(this.path);
+
+        if (!path) return; 
+
+        this.OpenFolder(path);
+    }
+
+    public async HandleNewFile() {
+        const path = await this.apis.NewFile(this.path);
+        
+        if (!path) return; 
+
+        const fileName = GetName(path);
+        if (this.tab.HasElementByPath(path)) { return; }
+        
+        const id = this.explorer.RegisterFile(fileName, path);
+        
+        this.explorer.OpenFile(id);
+        this.tab.OpenTab(id);
+    }
+
+    public async HandleNewWindow() {
+        this.apis.NewWindow();
+    }
+
+    public async HandleSave() {
+        this.explorer.SaveFile(null);
+    }
+
+    public async HandleSaveAll() {
+        for (const id of this.tab.GetOpenFileIds()) { this.explorer.SaveFile(id); }
+    }
+
+    public async HandleSaveAs() {
+        this.explorer.SaveFile(null, true);
+    }
+
+    public async HandleExit(save = false) {
+        if (save) {
+            await this.HandleSaveAll();
+        }
+
+        await getCurrentWindow().close();
+    }
+
+    public async HandleRecent(x: number, y: number) {
+        if (this.recent) {
+            this.recent.remove();
+            this.recent = null;
             return;
         }
 
-        const previousTab = document.querySelector<HTMLElement>(".explorer_file.selected_file");
+        this.recent = await this.dom.ShowRecent(x, y, this.menuWidth);
+        const recent = await this.apis.GetRecent();
 
-        if (previousTab && previousTab !== tab) {
-            previousTab.classList.remove("selected_file");
-            previousTab.style.backgroundColor = "";
+        let recentList: Recent[] = [];
+
+        for (const [path, info] of Object.entries(recent as Record<string, { Date: string }>)) {
+            const date = new Date(Number(info.Date) * 1000);
+            const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const diff = Math.floor((today.getTime() - target.getTime()) / 86400000);
+
+            switch (true) {
+                case diff === 0: recentList.push({ path: path, text: "Today", current: 1 }); break;
+                case diff === 1: recentList.push({ path: path, text: "Yestorday", current: 2 }); break;
+
+                case diff > 1 && diff < 7: recentList.push({ path: path, text: "Last Week", current: 3 }); break;
+                case date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear(): recentList.push({ path: path, text: "Last Month", current: 4 }); break;
+                case date.getFullYear() === now.getFullYear() - 1: recentList.push({ path: path, text: "Last Year", current: 5 }); break;
+            }
+        }
+        
+        for (const [index, recent] of recentList.entries()) {
+            this.dom.AddRecent(this.recent, recent.path, recent.text, index !== recentList.length - 1);
         }
 
-        tab.classList.add("selected_file");
-        tab.style.backgroundColor = "#202020";
+        this.recent.addEventListener("mousedown", async (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            const selection = target.closest(".selection") as HTMLElement | null;
+            const path = selection?.dataset.path;
+            const more = target.closest(".selection-shortcut-icon") as HTMLElement | null;
 
-        requestAnimationFrame(() => {
-            this.explorer.OpenFile(id);
+            if (more?.dataset.type === "more") {
+                event.stopPropagation();
+
+                const selection = more.closest(".selection") as HTMLElement | null;
+                const path = selection?.dataset.path;
+                const x = this.recent?.getBoundingClientRect().left ?? 0;
+                const y = selection?.getBoundingClientRect().top ?? 0;
+                const width = this.recent?.getBoundingClientRect().width ?? 0;
+                const selectedElement = selection;
+        
+                if (this.recent_more && this.selected_path === path) {
+                    this.recent_more.remove();
+                    this.recent_more = null;
+
+                    return;
+                }
+
+                this.selected_path = path ?? "";
+                this.recent_more = await this.dom.ShowMore_Recent(path ?? "", width, x, y);
+                this.recent_more?.addEventListener("mousedown", async (event: MouseEvent) => {
+                    event.stopPropagation();
+
+                    const target = event.target as HTMLElement;
+                    const action = target.closest(".selection") as HTMLElement | null;
+
+                    if (!action) return;
+
+                    switch (action.id) {
+                        case "open":  this.OpenFolder(this.selected_path); this.CloseMenu(); break;
+                        case "copy": await navigator.clipboard.writeText(this.selected_path); break;
+                        case "new_window": this.apis.NewWindow(this.selected_path); break;
+                        case "explorer": this.apis.OpenExplorer(this.selected_path); break;
+                        case "delete":
+                            this.dom.ShowWarning(() => { return; }, () => { 
+                                this.apis.DeleteElement(this.selected_path).catch(() => { return; });
+                                this.dom.RemoveRecent(selectedElement);
+                                this.apis.RemoveRecent(path ?? "");
+                                this.recent_more?.remove();
+                            });
+                        break;
+
+                        case "more": break;
+                    }
+                });
+                return;
+            }
+            
+            if (!path) { return; }
+            this.OpenFolder(path);
         });
-    };
+    }
 }
 
-async function main(): Promise<void> {
+async function main(window_path?: string): Promise<void> {
+    const path = window_path || GetPath() || Path;
+
+    if (!path) {
+        return;
+    }
+
+    console.log("path:", path);
+
+    const scroll_frame = document.getElementById("scroll_frame");
     const tree = document.getElementById("tree");
+    const menu_element = document.getElementById("top_options");
+    const file_pos = document.getElementById("file_pos");
 
     if (!tree) {
         throw new Error('Element "#tree" not found');
     }
 
+    if (!menu_element) {
+        throw new Error('Element "#top_options" not found');
+    }
+
+    if (!scroll_frame) {
+        throw new Error('Element "#menu_element" not found');
+    }
+
+    if (!file_pos) {
+        throw new Error('Element "#file_pos" not found');
+    }
+
     const storage = await InitializeCore();
-    const model = new ExplorerModel(tree, Path, storage);
+    const model = new ExplorerModel(tree, scroll_frame, path, storage);
     const view = new DomUpdate(model);
-    const tab = new TabModel(view, model);
+    const tab = new TabModel(view, model, file_pos);
     const editor = new EditorModel();
+    const menu = new MenuModel(menu_element, model, tab, view, path);
 
     model.SetView(view);
     model.SetTab(tab);
@@ -1222,16 +1546,21 @@ async function main(): Promise<void> {
     model.SetEditor(editor);
     tab.SetEditor(editor);
 
+    model.InitializeEvents();
     (window as any).editorModel = editor;
 
-    model.addProject(Path, { 
-        name: "BatataIDE",
+    model.addProject(path, {
+        name: GetName(path),
         kind: "Directory",
         parent: null,
+        path: path,
         is_open: false,
     });
 
     model.UpdateExplorer();
 }
 
-main();
+const params = new URLSearchParams(window.location.search);
+const path = params.get("path");
+
+main(path ?? "");

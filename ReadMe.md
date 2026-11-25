@@ -121,4 +121,4 @@ NeuronIDE uses MIT licences, which allow you to copy/use or modify the code with
 
 > Happy coding! And Good luck on your jerny!
 
-|| Version: Pre-Alpha 1.9.0 Release date: 11/18/2026
+|| Version: Pre-Alpha 2.0.0 Release date: 11/25/2026

@@ -1,9 +1,11 @@
 import { Tree as Highlight, Parser, Language, Query } from "web-tree-sitter";
-import init, { Editor } from "../packages/editor";
+import init, { Editor } from "./packages/editor";
 
 import * as vscodeTextmate from "vscode-textmate";
 import * as oniguruma from "vscode-oniguruma";
 import onigWasmUrl from "vscode-oniguruma/release/onig.wasm?url";
+
+import { FetchAsset } from "../assets";
 
 export class TextMateHighlighter {
     private registry!: vscodeTextmate.Registry;
@@ -23,14 +25,24 @@ export class TextMateHighlighter {
         const onigLib: vscodeTextmate.IOnigLib = { createOnigScanner: (patterns) => new oniguruma.OnigScanner(patterns), createOnigString: (value) => new oniguruma.OnigString(value), };
 
         this.registry = new vscodeTextmate.Registry({
-        onigLib: Promise.resolve(onigLib),
+            onigLib: Promise.resolve(onigLib),
 
-        loadGrammar: async (scopeName) => {
-            if (scopeName !== "source.ts") return null;
+            loadGrammar: async (scopeName) => {
+                if (scopeName !== "source.ts") return null;
 
-            const grammar = await import("../packages/languages/ts.syntax.json");
-            return grammar.default as unknown as vscodeTextmate.IRawGrammar;
-        },
+                const response = await FetchAsset("languages/ts.syntax.json");
+
+                if (!response.ok) {
+                    throw new Error(`Failed to load TypeScript grammar: ${response.status}`);
+                }
+
+                const grammar = await response.json();
+
+                console.log("Loaded grammar:", grammar);
+                console.log("Grammar scope:", grammar.scopeName);
+
+                return grammar as vscodeTextmate.IRawGrammar;
+            },
         });
 
         const grammar = await this.registry.loadGrammar("source.ts");
@@ -42,7 +54,6 @@ export class TextMateHighlighter {
         this.grammar = grammar;
     }
 
-    // This is just temporally
     private getCssClass(scopes: string[]): string {
         const scope = scopes.join(" ");
 
@@ -75,6 +86,7 @@ export class TextMateHighlighter {
     }
 }
 
+// Temperaly. Going to be changed in the next update after 2.0.0
 const editor = document.querySelector<HTMLDivElement>("#editor")!;
 const sidelines = document.querySelector<HTMLPreElement>("#editor-lines")!;
 const scroll = document.querySelector<HTMLDivElement>("#editor-scroll")!;
@@ -744,7 +756,7 @@ export class EditorModel {
     public async NewRender() {
         this.visibleLines.clear();
         this.visibleSidebarLines.clear();
-
+        
         let previousState: vscodeTextmate.StateStack = vscodeTextmate.INITIAL;
         const fragment = document.createDocumentFragment();
     
@@ -837,7 +849,29 @@ export class EditorModel {
         currentLine.replaceChildren();
     }
 
+    public CreateContext(id: number) {        
+        this.editor.create_buffer(id);
+        this.editor.switch_buffer(id);
+    }
+
+    public RemoveContext(id: number) {
+        this.editor.remove_buffer(id);
+    }
+
+    public SwitchContext(id: number) {
+        this.editor.switch_buffer(id);
+        this.NewRender();
+    }
+
+    public HasContext(id: number): boolean {
+        return this.editor.has_buffer(id);
+    }
+
+    public GetSavedForContext(id: number) {
+        return this.editor.get_buffer_text(id);
+    }
+
     public GetSaved() {
-        return this.editor.get_text();   
+        return this.editor.get_text();
     }
 }

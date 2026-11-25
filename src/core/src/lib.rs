@@ -12,10 +12,12 @@ pub enum FileType {
 #[wasm_bindgen]
 pub struct FileStorage {
     id_to_index: HashMap<u32, usize>,
+    visible: Vec<u32>,
 
     ids: Vec<u32>,
     names: Vec<String>,
-    kinds: Vec<FileType>,
+    kinds: Vec<FileType>,    
+    path: Vec<Option<String>>,
 
     is_open: Vec<bool>,
     is_saved: Vec<bool>,
@@ -25,7 +27,7 @@ pub struct FileStorage {
 
     content: Vec<Option<String>>,
     parents: Vec<Option<u32>>,
-    children: Vec<HashSet<u32>>,
+    children: Vec<Vec<u32>>,
 
     projects: HashSet<u32>,
     selected_elements: HashSet<u32>,
@@ -42,9 +44,11 @@ impl FileStorage {
     pub fn new() -> Self {
         Self {
             id_to_index: HashMap::new(),
+            visible: Vec::new(),
             ids: Vec::new(),
             names: Vec::new(),
             kinds: Vec::new(),
+            path: Vec::new(),
             is_open: Vec::new(),
             is_saved: Vec::new(),
             on_hover: Vec::new(),
@@ -62,7 +66,7 @@ impl FileStorage {
         }
     }
 
-    pub fn add_element(&mut self, name: String, kind: u8, parent: Option<u32>) -> Result<u32, JsValue> {
+    pub fn add_element(&mut self, name: String, kind: u8, parent: Option<u32>, path: Option<String>) -> Result<u32, JsValue> {
         let parent_index = match parent {
             Some(parent_id) => { 
                 Some(*self.id_to_index.get(&parent_id).ok_or_else(|| 
@@ -75,7 +79,6 @@ impl FileStorage {
         self.next_id += 1;
 
         let index = self.ids.len();
-
         let kind = match kind {
             0 => FileType::File,
             1 => FileType::Directory,
@@ -87,6 +90,7 @@ impl FileStorage {
         self.ids.push(id);
         self.names.push(name);
         self.kinds.push(kind);
+        self.path.push(path);
 
         self.is_open.push(false);
         self.is_saved.push(false);
@@ -96,12 +100,13 @@ impl FileStorage {
 
         self.content.push(None);
         self.parents.push(parent);
-        self.children.push(HashSet::new());
+        self.children.push(Vec::new());
 
         if let Some(parent_index) = parent_index {
-            self.children[parent_index].insert(id);
+            self.children[parent_index].push(id);
         } else {
             self.projects.insert(id);
+            self.visible.push(id);
         }
 
         Ok(id)
@@ -113,6 +118,13 @@ impl FileStorage {
         self.cutted_elements.remove(&id);
 
         if let Some(index) = self.id_to_index.remove(&id) {
+
+            if let Some(parent_id) = self.parents[index] {
+                if let Some(&parent_index) = self.id_to_index.get(&parent_id) { self.children[parent_index].retain(|&child_id| child_id != id); }
+            } else {
+                self.projects.remove(&id);
+            }
+
             self.ids.remove(index);
             self.names.remove(index);
             self.kinds.remove(index);
@@ -124,11 +136,86 @@ impl FileStorage {
             self.content.remove(index);
             self.parents.remove(index);
             self.children.remove(index);
+            self.path.remove(index);
 
             for (i, element_id) in self.ids.iter().enumerate() {
                 self.id_to_index.insert(*element_id, i);
             }
         }
+    }
+
+    fn sort_children(&self, children: &mut Vec<u32>) {
+        children.sort_by_cached_key(|id| {
+            let index = self.id_to_index[id];
+
+            let priority = match self.kinds[index] {
+                FileType::Directory => 0,
+                FileType::File => 1,
+                _ => 2,
+            };
+
+            (priority, self.names[index].to_lowercase())
+        });
+    }
+
+    pub fn get_children(&self, id: u32) -> Vec<u32> {
+        let Some(&index) = self.id_to_index.get(&id) else { return Vec::new(); };
+
+        let mut children: Vec<u32> = self.children[index].iter().copied().collect();
+        self.sort_children(&mut children);
+
+        children
+    }
+
+    pub fn open_directory(&mut self, id: u32) {
+        let Some(&index) = self.id_to_index.get(&id) else {
+            return;
+        };
+
+        if self.kinds[index] != FileType::Directory {
+            return;
+        }
+
+        let Some(position) = self.visible.iter().position(|&x| x == id) else {
+            return;
+        };
+
+        self.is_open[index] = true;
+
+        let mut children: Vec<u32> = self.children[index].iter().copied().collect();
+
+        self.sort_children(&mut children);
+        self.visible.splice(position + 1..position + 1, children);
+    }
+
+    pub fn close_directory(&mut self, id: u32) {
+        let Some(&index) = self.id_to_index.get(&id) else { return; };
+        self.is_open[index] = false;
+
+        let Some(position) = self.visible.iter().position(|&x| x == id) else { return; };
+
+        let mut remove_ids = HashSet::new();
+
+        self.collect_descendants(id, &mut remove_ids);
+        self.visible.retain(|x| !remove_ids.contains(x));
+        let _ = position;
+    }
+
+    fn collect_descendants(&self, id: u32, result: &mut HashSet<u32>) {
+        let Some(&index) = self.id_to_index.get(&id) else { return; };
+
+        for &child in &self.children[index] {
+            result.insert(child);
+            self.collect_descendants(child, result);
+        }
+    }
+
+    pub fn get_visible_element(&self, index: usize) -> Option<u32> {
+        self.visible.get(index).copied()
+    }
+
+    pub fn get_visible_count(&self) -> usize {
+        self.visible.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -162,6 +249,11 @@ impl FileStorage {
             FileType::Directory => 1,
             FileType::Unknown => 2,
         }
+    }
+
+    pub fn get_path(&self, id: u32) -> Option<String> {
+        let index = *self.id_to_index.get(&id)?;
+        self.path.get(index)?.clone()
     }
 
     pub fn get_parent(&self, id: u32) -> Option<u32> {
@@ -246,15 +338,43 @@ impl FileStorage {
         self.cutted_elements.contains(&id)
     }
 
-    pub fn get_children(&self, id: u32) -> Vec<u32> {
-        let Some(&index) = self.id_to_index.get(&id) else {
-            return Vec::new();
-        };
-
-        self.children[index].iter().copied().collect()
-    }
-
     pub fn get_index(&self, id: u32) -> Option<usize> {
         self.id_to_index.get(&id).copied()
+    }
+
+    pub fn get_children_count(&self, id: u32) -> usize {
+        let Some(&index) = self.id_to_index.get(&id) else {
+            return 0;
+        };
+
+        self.children[index].len()
+    }
+
+    pub fn clear(&mut self) {
+        self.id_to_index.clear();
+        self.visible.clear();
+
+        self.ids.clear();
+        self.names.clear();
+        self.kinds.clear();
+        self.path.clear();
+
+        self.is_open.clear();
+        self.is_saved.clear();
+        self.on_hover.clear();
+        self.rendered.clear();
+        self.loaded.clear();
+
+        self.content.clear();
+        self.parents.clear();
+        self.children.clear();
+
+        self.projects.clear();
+        self.selected_elements.clear();
+        self.copied_elements.clear();
+        self.cutted_elements.clear();
+
+        self.next_id = 1;
+        self.opened_file = None;
     }
 }
