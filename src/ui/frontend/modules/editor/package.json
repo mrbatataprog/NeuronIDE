@@ -1,0 +1,15 @@
+{
+  "name": "editor",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "editor_bg.wasm",
+    "editor.js",
+    "editor.d.ts"
+  ],
+  "main": "editor.js",
+  "types": "editor.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

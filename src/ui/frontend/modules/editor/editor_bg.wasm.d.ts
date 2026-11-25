@@ -1,0 +1,37 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_editor_free: (a: number, b: number) => void;
+export const editor_byte_count: (a: number) => [number, number, number];
+export const editor_char_count: (a: number) => [number, number, number];
+export const editor_char_to_byte: (a: number, b: number) => [number, number, number];
+export const editor_char_to_line: (a: number, b: number) => [number, number, number];
+export const editor_char_to_utf16: (a: number, b: number) => [number, number, number];
+export const editor_clear: (a: number) => [number, number];
+export const editor_create_buffer: (a: number, b: number) => void;
+export const editor_delete: (a: number, b: number, c: number) => [number, number];
+export const editor_get_buffer_text: (a: number, b: number) => [number, number, number, number];
+export const editor_get_char: (a: number, b: number) => [number, number, number, number];
+export const editor_get_line: (a: number, b: number) => [number, number, number, number];
+export const editor_get_line_content: (a: number, b: number) => [number, number, number, number];
+export const editor_get_lines: (a: number, b: number, c: number) => [number, number, number, number];
+export const editor_get_range: (a: number, b: number, c: number) => [number, number, number, number];
+export const editor_get_text: (a: number) => [number, number, number, number];
+export const editor_get_text_from_byte: (a: number, b: number) => [number, number, number, number];
+export const editor_has_buffer: (a: number, b: number) => number;
+export const editor_insert: (a: number, b: number, c: number, d: number) => [number, number];
+export const editor_line_count: (a: number) => [number, number, number];
+export const editor_line_to_char: (a: number, b: number) => [number, number, number];
+export const editor_new: () => number;
+export const editor_remove_buffer: (a: number, b: number) => void;
+export const editor_replace: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+export const editor_set_text: (a: number, b: number, c: number) => [number, number];
+export const editor_switch_buffer: (a: number, b: number) => [number, number];
+export const editor_utf16_length: (a: number) => [number, number, number];
+export const editor_utf16_to_char: (a: number, b: number) => [number, number, number];
+export const __wbindgen_externrefs: WebAssembly.Table;
+export const __externref_table_dealloc: (a: number) => void;
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_start: () => void;

@@ -1,5 +1,5 @@
 import { Tree as Highlight, Parser, Language, Query } from "web-tree-sitter";
-import init, { Editor } from "./packages/editor";
+import init, { Editor } from "./modules/editor/editor.js";
 
 import * as vscodeTextmate from "vscode-textmate";
 import * as oniguruma from "vscode-oniguruma";

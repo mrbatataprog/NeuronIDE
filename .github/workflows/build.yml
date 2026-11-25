@@ -27,7 +27,8 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -40,7 +41,8 @@ jobs:
             patchelf \
             xdg-utils
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
 
@@ -50,7 +52,15 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build Tauri
-        run: npm run tauri build -- --target ${{ matrix.target }}
+        run: npm run tauri -- build --target ${{ matrix.target }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeuronIDE-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/bundle/
+          if-no-files-found: error
+          retention-days: 14

@@ -2,8 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { BackendAPI } from "./backend";
 import { EditorModel } from "./editor";
 import { DomUpdate } from "./Dom/tree";
-import init, { FileStorage } from "./packages/core/core";
-import types, { InitOutput  } from "./packages/core/core";
+import init, { FileStorage } from "./modules/core/core.js";
+import types, { InitOutput  } from "./modules/core/core.js";
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { SetPath, GetPath } from "./window";
